@@ -12,7 +12,7 @@ from keras.layers import Dense, GlobalAveragePooling2D
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, History
 from keras.models import load_model
-
+from keras.metrics import TopKCategoricalAccuracy
 
 train_path = './train'
 test_path = './test'
@@ -74,8 +74,11 @@ model = Model(inputs=base_model.input, outputs=predictions)
 for layer in base_model.layers:
     layer.trainable = False
 
+# Add top-5 accuracy metric
+top5_acc = TopKCategoricalAccuracy(k=5)
+
 # Compile the model
-model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy'])
+model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy',top5_acc])
 
 # Define callbacks
 checkpoint = ModelCheckpoint(checkpoint_path, monitor='val_accuracy', save_best_only=True)
