@@ -10,9 +10,11 @@ from keras.applications import Xception
 from keras.models import Model
 from keras.layers import Dense, GlobalAveragePooling2D
 from keras.optimizers import Adam
-from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, History
+from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from keras.models import load_model
 from keras.metrics import TopKCategoricalAccuracy
+
+import pickle as pkl
 
 train_path = './train'
 test_path = './test'
@@ -50,7 +52,8 @@ test_generator = test_datagen.flow_from_directory(
         test_path,  
         target_size=image_size,
         batch_size=batch_size,
-        class_mode='categorical')
+        class_mode='categorical',
+        shuffle=False)
 
 # Calculate class weights for imbalance dataset
 class_weights = class_weight.compute_sample_weight(class_weight='balanced', y=train_generator.classes)
@@ -84,9 +87,8 @@ model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accur
 checkpoint = ModelCheckpoint(checkpoint_path, monitor='val_accuracy', save_best_only=True)
 early_stop = EarlyStopping(monitor='val_loss', patience=5)
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3)
-history = History()
 
-callbacks = [checkpoint, early_stop, reduce_lr, history]
+callbacks = [checkpoint, early_stop, reduce_lr]
 
 # Train the model
 history = model.fit(
@@ -97,6 +99,9 @@ history = model.fit(
         validation_steps=validation_generator.n // batch_size,
         class_weight=class_weights,
         callbacks=callbacks)
+
+with open('history.pkl', 'wb') as f:
+    pkl.dump(history, f)
 
 # Plot training & validation accuracy values
 plt.plot(history.history['accuracy'])
