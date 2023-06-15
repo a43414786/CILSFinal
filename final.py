@@ -53,7 +53,8 @@ test_generator = test_datagen.flow_from_directory(
         class_mode='categorical')
 
 # Calculate class weights for imbalance dataset
-class_weights = class_weight.compute_class_weight('balanced', np.unique(train_generator.classes), train_generator.classes)
+class_weights = class_weight.compute_sample_weight(class_weight='balanced', y=train_generator.classes)
+class_weights = dict(enumerate(class_weights))
 
 # Load the Xception model
 base_model = Xception(weights='imagenet', include_top=False)
