@@ -1,4 +1,3 @@
-# Import necessary libraries
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -13,125 +12,120 @@ from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from keras.models import load_model
 from keras.metrics import TopKCategoricalAccuracy
+from cutmix_keras import CutMixImageDataGenerator
 
 import pickle as pkl
 
-train_path = './train'
-test_path = './test'
-checkpoint_path = './checkpoint.h5'
+train_path = '/content/train/'
+test_path = '/content/test/'
+checkpoint_path = '/content/drive/MyDrive/CILSFinal/checkpoint.h5'
 batch_size = 32
 image_size = (299, 299)
-epochs = 50
+epochs = 15
 
-# Data generators with augmentation
 train_datagen = ImageDataGenerator(rescale=1./255,
-                                   shear_range=0.2,
-                                   zoom_range=0.2,
-                                   horizontal_flip=True,
-                                   validation_split=0.2 
-                                   )
+                  shear_range=0.2,
+                  zoom_range=0.2,
+                  horizontal_flip=True,
+                  validation_split=0.2)
 
 test_datagen = ImageDataGenerator(rescale=1./255)
 
-# Load the data from directory
-train_generator = train_datagen.flow_from_directory(
-        train_path,  
-        target_size=(299, 299),
+train_generator_1 = train_datagen.flow_from_directory(
+        train_path,
+        target_size=image_size,
         batch_size=batch_size,
         class_mode='categorical',
         subset='training')
 
+train_generator_2 = train_datagen.flow_from_directory(
+        train_path,
+        target_size=image_size,
+        batch_size=batch_size,
+        class_mode='categorical',
+        subset='training')
+
+train_generator = CutMixImageDataGenerator(
+  generator1=train_generator_1,
+  generator2=train_generator_2,
+  img_size=299,
+  batch_size=batch_size)
+
 validation_generator = train_datagen.flow_from_directory(
-        train_path,  
+        train_path,
         target_size=image_size,
         batch_size=batch_size,
         class_mode='categorical',
         subset='validation')
 
 test_generator = test_datagen.flow_from_directory(
-        test_path,  
+        test_path,
         target_size=image_size,
         batch_size=batch_size,
         class_mode='categorical',
         shuffle=False)
 
-# Calculate class weights for imbalance dataset
-class_weights = class_weight.compute_sample_weight(class_weight='balanced', y=train_generator.classes)
+class_weights = class_weight.compute_sample_weight(class_weight='balanced', y=train_generator_1.classes)
 class_weights = dict(enumerate(class_weights))
 
-# Load the Xception model
 base_model = Xception(weights='imagenet', include_top=False)
 
-# Add a global spatial average pooling layer
 x = base_model.output
 x = GlobalAveragePooling2D()(x)
 
-# Add a fully-connected layer and a logistic layer with 50 classes 
 x = Dense(1024, activation='relu')(x)
-predictions = Dense(50, activation='softmax')(x)
+out = Dense(50, activation='softmax')(x)
 
-# Define the model
-model = Model(inputs=base_model.input, outputs=predictions)
+model = Model(inputs=base_model.input, outputs=out)
 
-# First: train only the top layers (which were randomly initialized)
-for layer in base_model.layers:
-    layer.trainable = False
+# for layer in base_model.layers:
+#     layer.trainable = False
 
-# Add top-5 accuracy metric
-top5_acc = TopKCategoricalAccuracy(k=5)
+model.summary()
 
-# Compile the model
-model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy',top5_acc])
+model.compile(optimizer=Adam(),
+       loss='categorical_crossentropy',
+       metrics=['accuracy',TopKCategoricalAccuracy(k=5)])
 
-# Define callbacks
 checkpoint = ModelCheckpoint(checkpoint_path, monitor='val_accuracy', save_best_only=True)
-early_stop = EarlyStopping(monitor='val_loss', patience=5)
-reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3)
+early_stop = EarlyStopping(monitor='val_accuracy', patience=5)
+reduce_lr = ReduceLROnPlateau(monitor='val_accuracy', factor=0.1, patience=3)
 
-callbacks = [checkpoint, early_stop, reduce_lr]
-
-# Train the model
 history = model.fit(
         train_generator,
-        steps_per_epoch=train_generator.n // batch_size,
+        steps_per_epoch=train_generator_1.n // batch_size,
         epochs=epochs,
         validation_data=validation_generator,
         validation_steps=validation_generator.n // batch_size,
         class_weight=class_weights,
-        callbacks=callbacks)
+        callbacks=[checkpoint, early_stop, reduce_lr])
 
-with open('history.pkl', 'wb') as f:
-    pkl.dump(history,f)
-
-# Plot training & validation accuracy values
 plt.plot(history.history['accuracy'])
 plt.plot(history.history['val_accuracy'])
 plt.title('Model accuracy')
 plt.ylabel('Accuracy')
 plt.xlabel('Epoch')
 plt.legend(['Train', 'Validation'], loc='upper left')
-plt.show()
+# plt.show()
+plt.imsave('Accuracy_curve.png')
 
-# Plot training & validation loss values
 plt.plot(history.history['loss'])
 plt.plot(history.history['val_loss'])
 plt.title('Model loss')
 plt.ylabel('Loss')
 plt.xlabel('Epoch')
 plt.legend(['Train', 'Validation'], loc='upper left')
-plt.show()
+# plt.show()
+plt.imsave('Loss_curve.png')
 
-# Evaluate on test set
-test_loss, test_accuracy = model.evaluate(test_generator)
-print(f'Test accuracy: {test_accuracy}')
+loss,top_1_accuracy,top_5_accuracy = model.evaluate(test_generator)
+print(f'Top 1 Test accuracy: {top_1_accuracy}')
+print(f'Top 5 Test accuracy: {top_5_accuracy}')
 
-# Predict the labels
 test_generator.reset()
 pred = model.predict(test_generator, verbose=1)
 predicted_class_indices=np.argmax(pred,axis=1)
-
-# Get the confusion matrix
 cm = confusion_matrix(test_generator.classes, predicted_class_indices)
 
-# Plot the confusion matrix
-sns.heatmap(cm, annot=True)
+sns.heatmap(cm, annot=False)
+plt.imsave('confusion_matrix.png')
