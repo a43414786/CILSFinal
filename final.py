@@ -101,7 +101,7 @@ history = model.fit(
         callbacks=callbacks)
 
 with open('history.pkl', 'wb') as f:
-    pkl.dump(history, f)
+    pkl.dump(history,f)
 
 # Plot training & validation accuracy values
 plt.plot(history.history['accuracy'])
